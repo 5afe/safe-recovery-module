@@ -10,6 +10,15 @@ import "lib/safe-contracts/contracts/proxies/GnosisSafeProxyFactory.sol";
 
 contract TestRecoveryModule is Test {
 
+    // Is there a more elegant way to access the events?
+    event AddedDelegate(address delegate);
+    event RemovedDelegate(address delegate);
+    event SetThreshold(uint256 threshold);
+    event SetRecoveryPeriod(uint256 threshold);
+    event StartRecovery(uint256 recoveryDeadline);
+    event CancelRecovery();
+    event Recover();
+
     GnosisSafe proxyAsSafe;
     RecoveryModule testModule;
     address safeOwner = address(0x69);
@@ -90,18 +99,40 @@ contract TestRecoveryModule is Test {
         assertEq(delegatesFromContract[1], address(0x2));
     }
 
-    function testRecoveryAfterDeadline() public {
+    function testCancelRecoveryProcess() public {
+        vm.prank(address(initialDelegates[0]));
+        vm.expectEmit(true, false, false, true);
+        emit StartRecovery(1001);
+        testModule.startRecovery();
+
+        // Recover Success
+        vm.prank(address(proxyAsSafe));
+        vm.warp(500);
+        vm.expectEmit(true, false, false, true);
+        emit CancelRecovery();
+        testModule.cancelRecovery();
 
         vm.prank(address(initialDelegates[0]));
+        vm.warp(2000);
+        vm.expectRevert(bytes("Recovery not started"));
+        testModule.recover();
+    }
+
+    function testRecoveryAfterDeadline() public {
+        vm.prank(address(initialDelegates[0]));
+        vm.expectEmit(true, false, false, true);
+        emit StartRecovery(1001);
         testModule.startRecovery();
 
         // Recover Success
         vm.prank(address(initialDelegates[0]));
         vm.warp(2000);
+        vm.expectEmit(true, false, false, true);
+        emit Recover();
         testModule.recover();
 
         // Check Safe owners
-        console.log("Owners:");
+        console.log("Owners after recovery:");
         for (uint256 i = 0; i < proxyAsSafe.getOwners().length; i++) {
             console.log(proxyAsSafe.getOwners()[i]);
         }

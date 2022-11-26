@@ -67,7 +67,6 @@ contract RecoveryModule {
         require(delegate != address(0) && delegate != SENTINEL_DELEGATES && delegate != address(this), "Invalid delegate address");
         require(delegates[delegate] == address(0), "Delegate already exists");
         GnosisSafe safe = GnosisSafe(owner);
-
         require(safe.isOwner(delegate) == false, "Cannot add existing owner as delegate");
 
         delegates[delegate] = delegates[SENTINEL_DELEGATES];
@@ -151,7 +150,7 @@ contract RecoveryModule {
         
         recoveryDeadline = block.timestamp + recoveryPeriod;
 
-        emit SetRecoveryPeriod(recoveryDeadline);
+        emit StartRecovery(recoveryDeadline);
     }
 
     function getRecoveryDeadline() public view returns (uint256) {
