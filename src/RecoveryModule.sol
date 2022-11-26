@@ -66,10 +66,15 @@ contract RecoveryModule {
     function addDelegate(address delegate) public onlyOwner {
         require(delegate != address(0) && delegate != SENTINEL_DELEGATES && delegate != address(this), "Invalid delegate address");
         require(delegates[delegate] == address(0), "Delegate already exists");
+        GnosisSafe safe = GnosisSafe(owner);
+
+        require(safe.isOwner(delegate) == false, "Cannot add existing owner as delegate");
 
         delegates[delegate] = delegates[SENTINEL_DELEGATES];
         delegates[SENTINEL_DELEGATES] = delegate;
         delegateCount++;
+
+        
 
         emit AddedDelegate(delegate);
     }
@@ -163,6 +168,7 @@ contract RecoveryModule {
     }
 
     /// @dev Recovers the Safe by adding delegates as owners with the specified threshold.
+    /// TODO: What if a delegate was added as safe owner? We should skip them when adding owners
     function recover() external onlyDelegate {
         require(recoveryDeadline != NO_DEADLINE, "Recovery not started");
         require(block.timestamp > recoveryDeadline, "Recovery deadline not met");

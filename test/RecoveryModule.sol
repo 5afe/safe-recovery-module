@@ -10,21 +10,14 @@ import "lib/safe-contracts/contracts/proxies/GnosisSafeProxyFactory.sol";
 
 contract TestRecoveryModule is Test {
 
-    function testConstructor() external {
-        address[] memory initialDelegates = new address[](2);
-        initialDelegates[0] = address(0x2);
-        initialDelegates[1] = address(0x69);
-        RecoveryModule testModule = new RecoveryModule(60 * 60 * 24 * 180, initialDelegates, 1);
-        assertEq(testModule.recoveryPeriod(), 60 * 60 * 24 * 180);
-        assertEq(testModule.recoveryDeadline(), 0);
-        address[] memory delegatesFromContract = testModule.getDelegates();
-        assertEq(delegatesFromContract[0], address(0x69));
-        assertEq(delegatesFromContract[1], address(0x2));
-    }
+    GnosisSafe proxyAsSafe;
+    RecoveryModule testModule;
+    address safeOwner = address(0x69);
+    address[] initialDelegates = new address[](2);
 
-    function testFullCircle() external {
+
+    function setUp() public {
         address[] memory safeOwners = new address[](1);
-        address safeOwner = address(0x69);
         safeOwners[0] = safeOwner;
         GnosisSafe safeSingleton = new GnosisSafe();
         
@@ -46,16 +39,7 @@ contract TestRecoveryModule is Test {
         GnosisSafeProxy deployedSafe = proxyFactory.createProxyWithNonce(address(safeSingleton), initializer, saltNonce);
         console.log('Deployed Safe address: ', address(deployedSafe));
 
-        // Deploy the Recovery Module
-        console.log('Deploy RecoveryModule');
-        address[] memory initialDelegates = new address[](2);
-        initialDelegates[0] = address(0x2);
-        initialDelegates[1] = address(0x69);
-        vm.prank(address(deployedSafe));
-        RecoveryModule testModule = new RecoveryModule(1000, initialDelegates, 2);
-        console.logBytes(abi.encodePacked(address(this)));
-
-        GnosisSafe proxyAsSafe = GnosisSafe(payable(address(deployedSafe)));
+        proxyAsSafe = GnosisSafe(payable(address(deployedSafe)));
         proxyAsSafe.setup(safeOwners,
             1,
             address(0),
@@ -66,14 +50,21 @@ contract TestRecoveryModule is Test {
             payable(address(0))
         );
 
+        // Deploy the Recovery Module
+        console.log('Deploy RecoveryModule');
+        initialDelegates[0] = address(0x2);
+        initialDelegates[1] = address(0x420);
+        vm.prank(address(proxyAsSafe));
+        testModule = new RecoveryModule(1000, initialDelegates, 2);
+
         // Prevalidated signature
-        bytes memory test = hex"0000000000000000000000000000000000000000000000000000000000000069000000000000000000000000000000000000000000000000000000000000000001";
+        bytes memory signature = hex"0000000000000000000000000000000000000000000000000000000000000069000000000000000000000000000000000000000000000000000000000000000001";
 
         // Enable the module
         vm.prank(safeOwner);
         bytes memory enableModuleEncoding = abi.encodeWithSignature("enableModule(address)", address(testModule));
         proxyAsSafe.execTransaction(
-            address(deployedSafe),
+            address(proxyAsSafe),
             0,
             enableModuleEncoding,
             Enum.Operation.Call,
@@ -82,11 +73,24 @@ contract TestRecoveryModule is Test {
             0,
             address(0),
             payable(address(0)),
-            test
+            signature
         );
 
         // Check Safe modules
-        console.log('Is module enabled: ', proxyAsSafe.isModuleEnabled(address(testModule)));
+        assertEq(proxyAsSafe.isModuleEnabled(address(testModule)), true);
+    }
+
+    function testConstructor() public {
+        vm.prank(address(proxyAsSafe));
+        testModule = new RecoveryModule(60 * 60 * 24 * 180, initialDelegates, 1);
+        assertEq(testModule.recoveryPeriod(), 60 * 60 * 24 * 180);
+        assertEq(testModule.recoveryDeadline(), 0);
+        address[] memory delegatesFromContract = testModule.getDelegates();
+        assertEq(delegatesFromContract[0], address(0x420));
+        assertEq(delegatesFromContract[1], address(0x2));
+    }
+
+    function testRecoveryAfterDeadline() public {
 
         vm.prank(address(initialDelegates[0]));
         testModule.startRecovery();
@@ -101,8 +105,11 @@ contract TestRecoveryModule is Test {
         for (uint256 i = 0; i < proxyAsSafe.getOwners().length; i++) {
             console.log(proxyAsSafe.getOwners()[i]);
         }
+        assertEq(proxyAsSafe.getOwners()[0], address(0x2));
+        assertEq(proxyAsSafe.getOwners()[1], address(0x420));
+        assertEq(proxyAsSafe.getOwners()[2], address(0x69));
         
         // Check Safe threshold
-        console.log(proxyAsSafe.getThreshold());
+        assertEq(proxyAsSafe.getThreshold(), 2);
     }
 }
